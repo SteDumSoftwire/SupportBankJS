@@ -132,6 +132,9 @@ async function listenInput() {
                 parseXML(filename);
             }
 
+        } else if (inputString.includes('Export File')) {
+            let filename = inputString.split(' ')[2];
+            exportData(filename);
         } else {
             console.log('Wrong input!');
         }
@@ -168,7 +171,7 @@ function parseXML(filename: string) {
         jsonArr[i]["To"] = jsonArr[i]["Parties"]["To"];
         jsonArr[i]["Amount"] = jsonArr[i]["Value"];
         jsonArr[i]["Narrative"] = jsonArr[i]["Description"];
-        jsonArr[i]["Date"] = new Date(Number(jsonArr[i]["@_Date"]));
+        jsonArr[i]["Date"] = new Date(Number(jsonArr[i]["@_Date"]) * 3600 * 1000);
         delete jsonArr[i]["Parties"];
         delete jsonArr[i]["Value"];
         delete jsonArr[i]["Value"];
@@ -205,6 +208,19 @@ function extractData(data: any, lineIndex: number): void {
         getAccount(accountList, data["To"])!,
         data["Narrative"],
         data["Amount"]));
+}
+
+function exportData(filename: string) {
+    for (let transaction of transactionList) {
+        let obj = {
+            "From": transaction.from.owner.name,
+            "To": transaction.to.owner.name,
+            "Narrative": transaction.narative,
+            "Amount": transaction.amount,
+            "Date": transaction.date
+        }
+        fs.appendFileSync(filename, JSON.stringify(obj) + '\n', 'utf-8');
+    }
 }
 
 logger.trace('Entering program');
