@@ -95,8 +95,6 @@ function getAccount(accountList: Array<Account>, name: string): Account | null {
 
 async function listenInput() {
     logger.trace('Enter listenInput function');
-    await parseCSV('Transactions2014.csv');
-    await parseCSV('DodgyTransactions2015.csv');
     while(1) {
         let inputString = readlineSync.question('Enter Command: ');
         if (inputString == 'List All') {
@@ -114,6 +112,16 @@ async function listenInput() {
             }
         } else if (inputString == 'Quit') {
             return;
+        } else if (inputString.includes('Import File')) {
+            let filename = inputString.split(' ')[2];
+            let tmp = filename;
+            let ext = tmp.split('.').pop();
+            if (ext == 'json') {
+                parseJSON(filename);
+            } else if (ext == 'csv') {
+                await parseCSV(filename);
+            }
+
         } else {
             console.log('Wrong input!');
         }
@@ -126,36 +134,49 @@ async function parseCSV(filePath: string) {
     let lineIndex = 1;
     return new Promise<void>((resolve, reject) => {
         reader.on('data', (data: any) => {
-            let fromPerson = getPerson(personList, data["From"]);
-            let toPerson = getPerson(personList, data["To"]);
-            let date = moment(data["Date"], "DD/MM/YYYY");
-            if (!date.isValid()) {
-                logger.debug(lineIndex + ": "+ date.toDate());
-                return;
-            }
-            if (isNaN(Number(data["Amount"]))) {
-                logger.debug(lineIndex + ": " + "NaN");
-                return;
-            }
-            if (fromPerson == null) {
-                personList.push(new Person(data["From"]));
-                accountList.push(new Account(getPerson(personList, data["From"])!));
-            }
-            if (toPerson == null) {
-                personList.push(new Person(data["To"]));
-                accountList.push(new Account(getPerson(personList, data["To"])!));
-            }
-            getAccount(accountList, data["From"])!.changeBalance(Number(data["Amount"]) * -1);
-            getAccount(accountList, data["To"])!.changeBalance(Number(data["Amount"]));
-            transactionList.push(new Transaction(date.toDate(),
-                getAccount(accountList, data["From"])!,
-                getAccount(accountList, data["To"])!,
-                data["Narrative"],
-                data["Amount"]));
+            extractData(data, lineIndex);
             lineIndex++;
         });
         reader.on('end', () => resolve());
     })
+}
+
+function parseJSON(filename: string) {
+    let data = JSON.parse(fs.readFileSync(filename));
+    let objIdx = 1;
+    for (let el of data) {
+        extractData(el, objIdx);
+        objIdx++;
+    }
+}
+
+function extractData(data: any, lineIndex: number): void {
+    let fromPerson = getPerson(personList, data["From"]);
+    let toPerson = getPerson(personList, data["To"]);
+    let date = moment(data["Date"], "DD/MM/YYYY");
+    if (!date.isValid()) {
+        logger.debug(lineIndex + ": "+ date.toDate());
+        return;
+    }
+    if (isNaN(Number(data["Amount"]))) {
+        logger.debug(lineIndex + ": " + "NaN");
+        return;
+    }
+    if (fromPerson == null) {
+        personList.push(new Person(data["From"]));
+        accountList.push(new Account(getPerson(personList, data["From"])!));
+    }
+    if (toPerson == null) {
+        personList.push(new Person(data["To"]));
+        accountList.push(new Account(getPerson(personList, data["To"])!));
+    }
+    getAccount(accountList, data["From"])!.changeBalance(Number(data["Amount"]) * -1);
+    getAccount(accountList, data["To"])!.changeBalance(Number(data["Amount"]));
+    transactionList.push(new Transaction(date.toDate(),
+        getAccount(accountList, data["From"])!,
+        getAccount(accountList, data["To"])!,
+        data["Narrative"],
+        data["Amount"]));
 }
 
 logger.trace('Entering program');
