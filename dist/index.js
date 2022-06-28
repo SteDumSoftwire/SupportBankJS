@@ -10,7 +10,13 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const util_1 = require("util");
+const fast_xml_parser_1 = require("fast-xml-parser");
+const xmlOptions = {
+    ignoreAttributes: false,
+    attributeNamePrefix: "@_"
+};
 const log4js = require('log4js');
+const parser = new fast_xml_parser_1.XMLParser(xmlOptions);
 log4js.configure({
     appenders: {
         file: { type: 'fileSync', filename: 'logs/debug.log' }
@@ -85,6 +91,7 @@ function getAccount(accountList, name) {
 function listenInput() {
     return __awaiter(this, void 0, void 0, function* () {
         logger.trace('Enter listenInput function');
+        parseXML('Transactions2012.xml');
         while (1) {
             let inputString = readlineSync.question('Enter Command: ');
             if (inputString == 'List All') {
@@ -114,6 +121,9 @@ function listenInput() {
                 else if (ext == 'csv') {
                     yield parseCSV(filename);
                 }
+                else if (ext == 'xml') {
+                    parseXML(filename);
+                }
             }
             else {
                 console.log('Wrong input!');
@@ -141,6 +151,23 @@ function parseJSON(filename) {
     for (let el of data) {
         extractData(el, objIdx);
         objIdx++;
+    }
+}
+function parseXML(filename) {
+    let parsedXML = parser.parse(fs.readFileSync(filename));
+    let jsonArr = parsedXML["TransactionList"]["SupportTransaction"];
+    for (let i = 0; i < jsonArr.length; i++) {
+        jsonArr[i]["From"] = jsonArr[i]["Parties"]["From"];
+        jsonArr[i]["To"] = jsonArr[i]["Parties"]["To"];
+        jsonArr[i]["Amount"] = jsonArr[i]["Value"];
+        jsonArr[i]["Narrative"] = jsonArr[i]["Description"];
+        jsonArr[i]["Date"] = new Date(Number(jsonArr[i]["@_Date"]));
+        delete jsonArr[i]["Parties"];
+        delete jsonArr[i]["Value"];
+        delete jsonArr[i]["Value"];
+        delete jsonArr[i]["Description"];
+        delete jsonArr[i]["@_Date"];
+        extractData(jsonArr[i], i);
     }
 }
 function extractData(data, lineIndex) {

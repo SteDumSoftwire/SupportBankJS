@@ -1,7 +1,14 @@
 import {json} from "stream/consumers";
 import {debug} from "util";
+import {XMLParser} from "fast-xml-parser";
+
+const xmlOptions = {
+    ignoreAttributes: false,
+    attributeNamePrefix : "@_"
+};
 
 const log4js = require('log4js')
+const parser = new XMLParser(xmlOptions)
 
 log4js.configure({
     appenders: {
@@ -95,6 +102,7 @@ function getAccount(accountList: Array<Account>, name: string): Account | null {
 
 async function listenInput() {
     logger.trace('Enter listenInput function');
+    parseXML('Transactions2012.xml');
     while(1) {
         let inputString = readlineSync.question('Enter Command: ');
         if (inputString == 'List All') {
@@ -120,6 +128,8 @@ async function listenInput() {
                 parseJSON(filename);
             } else if (ext == 'csv') {
                 await parseCSV(filename);
+            } else if (ext == 'xml') {
+                parseXML(filename);
             }
 
         } else {
@@ -147,6 +157,24 @@ function parseJSON(filename: string) {
     for (let el of data) {
         extractData(el, objIdx);
         objIdx++;
+    }
+}
+
+function parseXML(filename: string) {
+    let parsedXML = parser.parse(fs.readFileSync(filename));
+    let jsonArr = parsedXML["TransactionList"]["SupportTransaction"];
+    for (let i = 0; i < jsonArr.length; i++) {
+        jsonArr[i]["From"] = jsonArr[i]["Parties"]["From"];
+        jsonArr[i]["To"] = jsonArr[i]["Parties"]["To"];
+        jsonArr[i]["Amount"] = jsonArr[i]["Value"];
+        jsonArr[i]["Narrative"] = jsonArr[i]["Description"];
+        jsonArr[i]["Date"] = new Date(Number(jsonArr[i]["@_Date"]));
+        delete jsonArr[i]["Parties"];
+        delete jsonArr[i]["Value"];
+        delete jsonArr[i]["Value"];
+        delete jsonArr[i]["Description"];
+        delete jsonArr[i]["@_Date"];
+        extractData(jsonArr[i], i);
     }
 }
 
