@@ -1,5 +1,26 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 Object.defineProperty(exports, "__esModule", { value: true });
+const util_1 = require("util");
+const log4js = require('log4js');
+log4js.configure({
+    appenders: {
+        file: { type: 'fileSync', filename: 'logs/debug.log' }
+    },
+    categories: {
+        default: { appenders: ['file'], level: 'debug' }
+    }
+});
+const logger = log4js.getLogger();
+logger.level = util_1.debug;
 let personList = [];
 let accountList = [];
 let transactionList = [];
@@ -36,7 +57,13 @@ class Account {
         this.balance = 0;
     }
     changeBalance(amount) {
-        this.balance -= amount;
+        this.balance += amount;
+    }
+    toString() {
+        let out = '';
+        out += "Owner: " + this.owner.name;
+        out += "; Balance: " + this.balance;
+        return out;
     }
 }
 function getPerson(personList, name) {
@@ -56,53 +83,70 @@ function getAccount(accountList, name) {
     return null;
 }
 function listenInput() {
-    while (1) {
-        let inputString = readlineSync.question('Enter Command: ');
-        if (inputString == 'List All') {
-            for (let transaction of transactionList) {
-                console.log(transaction.toString());
+    return __awaiter(this, void 0, void 0, function* () {
+        logger.trace('Enter listenInput function');
+        yield parseCSV('Transactions2014.csv');
+        yield parseCSV('DodgyTransactions2015.csv');
+        while (1) {
+            let inputString = readlineSync.question('Enter Command: ');
+            if (inputString == 'List All') {
+                for (let account of accountList) {
+                    console.log(account.toString());
+                }
+            }
+            else if (inputString.includes('List')) {
+                let accountName = inputString.split('[')[1].split(']')[0];
+                let filteredTransactions = transactionList.filter(function (transaction) {
+                    return transaction.from.owner.name == accountName || transaction.to.owner.name == accountName;
+                });
+                for (let transaction of filteredTransactions) {
+                    console.log(transaction.toString());
+                }
+            }
+            else if (inputString == 'Quit') {
+                return;
+            }
+            else {
+                console.log('Wrong input!');
             }
         }
-        else if (inputString.includes('List')) {
-            let accountName = inputString.split('[')[1].split(']')[0];
-            console.log(accountName);
-            let filteredTransactions = transactionList.filter(function (transaction) {
-                return transaction.from.owner.name == accountName || transaction.to.owner.name == accountName;
-            });
-            for (let transaction of filteredTransactions) {
-                console.log(transaction.toString());
-            }
-        }
-        else if (inputString == 'Quit') {
-            return;
-        }
-        else {
-            console.log('Wrong input!');
-        }
-    }
-}
-function parseCSV(filePath) {
-    fs.createReadStream(filePath)
-        .pipe(csv())
-        .on('data', (data) => {
-        let fromPerson = getPerson(personList, data["From"]);
-        let toPerson = getPerson(personList, data["To"]);
-        if (fromPerson == null) {
-            personList.push(new Person(data["From"]));
-            accountList.push(new Account(getPerson(personList, data["From"])));
-        }
-        if (toPerson == null) {
-            personList.push(new Person(data["To"]));
-            accountList.push(new Account(getPerson(personList, data["To"])));
-        }
-        getAccount(accountList, data["From"]).changeBalance(data["Amount"] * -1);
-        getAccount(accountList, data["To"]).changeBalance(data["Amount"]);
-        transactionList.push(new Transaction(moment(data["Date"], "DD/MM/YYYY").toDate(), getAccount(accountList, data["From"]), getAccount(accountList, data["To"]), data["Narrative"], data["Amount"]));
-    })
-        .on('end', () => {
-        console.log('Done parsing');
-        listenInput();
     });
 }
-parseCSV('Transactions2014.csv');
+function parseCSV(filePath) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let reader = fs.createReadStream(filePath)
+            .pipe(csv());
+        let lineIndex = 1;
+        return new Promise((resolve, reject) => {
+            reader.on('data', (data) => {
+                let fromPerson = getPerson(personList, data["From"]);
+                let toPerson = getPerson(personList, data["To"]);
+                let date = moment(data["Date"], "DD/MM/YYYY");
+                if (!date.isValid()) {
+                    logger.debug(lineIndex + ": " + date.toDate());
+                    return;
+                }
+                if (isNaN(Number(data["Amount"]))) {
+                    logger.debug(lineIndex + ": " + "NaN");
+                    return;
+                }
+                if (fromPerson == null) {
+                    personList.push(new Person(data["From"]));
+                    accountList.push(new Account(getPerson(personList, data["From"])));
+                }
+                if (toPerson == null) {
+                    personList.push(new Person(data["To"]));
+                    accountList.push(new Account(getPerson(personList, data["To"])));
+                }
+                getAccount(accountList, data["From"]).changeBalance(Number(data["Amount"]) * -1);
+                getAccount(accountList, data["To"]).changeBalance(Number(data["Amount"]));
+                transactionList.push(new Transaction(date.toDate(), getAccount(accountList, data["From"]), getAccount(accountList, data["To"]), data["Narrative"], data["Amount"]));
+                lineIndex++;
+            });
+            reader.on('end', () => resolve());
+        });
+    });
+}
+logger.trace('Entering program');
+listenInput();
 //# sourceMappingURL=index.js.map

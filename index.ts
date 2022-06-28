@@ -1,4 +1,19 @@
 import {json} from "stream/consumers";
+import {debug} from "util";
+
+const log4js = require('log4js')
+
+log4js.configure({
+    appenders: {
+        file: { type: 'fileSync', filename: 'logs/debug.log' }
+    },
+    categories: {
+        default: { appenders: ['file'], level: 'debug'}
+    }
+});
+
+const logger = log4js.getLogger();
+logger.level = debug;
 
 let personList: Array<Person> = [];
 let accountList: Array<Account> = [];
@@ -49,7 +64,14 @@ class Account {
     }
 
     changeBalance(amount: number): void {
-        this.balance -= amount;
+        this.balance += amount;
+    }
+
+    toString() : string {
+        let out = '';
+        out += "Owner: " + this.owner.name;
+        out += "; Balance: " + this.balance;
+        return out;
     }
 }
 
@@ -71,13 +93,17 @@ function getAccount(accountList: Array<Account>, name: string): Account | null {
     return null;
 }
 
-function listenInput() {
+async function listenInput() {
+    logger.trace('Enter listenInput function');
+    await parseCSV('Transactions2014.csv');
+    await parseCSV('DodgyTransactions2015.csv');
     while(1) {
         let inputString = readlineSync.question('Enter Command: ');
         if (inputString == 'List All') {
-            for (let transaction of transactionList) {
-                console.log(transaction.toString());
+            for (let account of accountList) {
+                console.log(account.toString());
             }
+
         } else if (inputString.includes('List')) {
             let accountName = inputString.split('[')[1].split(']')[0];
             let filteredTransactions = transactionList.filter(function (transaction) {
@@ -94,12 +120,23 @@ function listenInput() {
     }
 }
 
-function parseCSV(filePath: string) {
-    fs.createReadStream(filePath)
-        .pipe(csv())
-        .on('data', (data: any) => {
+async function parseCSV(filePath: string) {
+    let reader = fs.createReadStream(filePath)
+        .pipe(csv());
+    let lineIndex = 1;
+    return new Promise<void>((resolve, reject) => {
+        reader.on('data', (data: any) => {
             let fromPerson = getPerson(personList, data["From"]);
             let toPerson = getPerson(personList, data["To"]);
+            let date = moment(data["Date"], "DD/MM/YYYY");
+            if (!date.isValid()) {
+                logger.debug(lineIndex + ": "+ date.toDate());
+                return;
+            }
+            if (isNaN(Number(data["Amount"]))) {
+                logger.debug(lineIndex + ": " + "NaN");
+                return;
+            }
             if (fromPerson == null) {
                 personList.push(new Person(data["From"]));
                 accountList.push(new Account(getPerson(personList, data["From"])!));
@@ -108,18 +145,18 @@ function parseCSV(filePath: string) {
                 personList.push(new Person(data["To"]));
                 accountList.push(new Account(getPerson(personList, data["To"])!));
             }
-            getAccount(accountList, data["From"])!.changeBalance(data["Amount"] * -1);
-            getAccount(accountList, data["To"])!.changeBalance(data["Amount"]);
-            transactionList.push(new Transaction(moment(data["Date"], "DD/MM/YYYY").toDate(),
+            getAccount(accountList, data["From"])!.changeBalance(Number(data["Amount"]) * -1);
+            getAccount(accountList, data["To"])!.changeBalance(Number(data["Amount"]));
+            transactionList.push(new Transaction(date.toDate(),
                 getAccount(accountList, data["From"])!,
                 getAccount(accountList, data["To"])!,
                 data["Narrative"],
                 data["Amount"]));
-        })
-        .on('end', () => {
-            console.log('Done parsing');
-            listenInput();
-        })
+            lineIndex++;
+        });
+        reader.on('end', () => resolve());
+    })
 }
 
-parseCSV('Transactions2014.csv');
+logger.trace('Entering program');
+listenInput()
